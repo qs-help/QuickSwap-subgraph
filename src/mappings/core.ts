@@ -1,5 +1,5 @@
 /* eslint-disable prefer-const */
-import { BigInt, BigDecimal, store, Address } from '@graphprotocol/graph-ts'
+import { BigInt, BigDecimal, store, Address, log } from '@graphprotocol/graph-ts'
 import {
   Pair,
   Token,
@@ -209,17 +209,38 @@ export function handleTransfer(event: Transfer): void {
 }
 
 export function handleSync(event: Sync): void {
+  const executionId = Math.floor(Math.random() * 10000000000)
+  log.debug('{} - {} - beginning handleSync - block number: {}, block hash: {}, transaction hash: {}', [
+    executionId,
+    Date.now(),
+    event.block.number.toString(),
+    event.block.hash.toHexString(),
+    event.transaction.hash.toHexString(),
+  ])
+  
   let pair = Pair.load(event.address.toHex())
   let token0 = Token.load(pair.token0)
   let token1 = Token.load(pair.token1)
   let uniswap = UniswapFactory.load(FACTORY_ADDRESS)
-
+  
+  log.debug('{} - {} - loaded entities - token0 = {} token1 = {}', [
+    executionId,
+    Date.now(),
+    token0.symbol,
+    token1.symbol,
+  ])
+  
   // reset factory liquidity by subtracting onluy tarcked liquidity
   uniswap.totalLiquidityETH = uniswap.totalLiquidityETH.minus(pair.trackedReserveETH as BigDecimal)
 
   // reset token total liquidity amounts
   token0.totalLiquidity = token0.totalLiquidity.minus(pair.reserve0)
   token1.totalLiquidity = token1.totalLiquidity.minus(pair.reserve1)
+  
+  log.debug('{} - {} - reset liquidity amounts', [
+    executionId,
+    Date.now(),
+  ])
 
   pair.reserve0 = convertTokenToDecimal(event.params.reserve0, token0.decimals)
   pair.reserve1 = convertTokenToDecimal(event.params.reserve1, token1.decimals)
@@ -230,16 +251,31 @@ export function handleSync(event: Sync): void {
   else pair.token1Price = ZERO_BD
 
   pair.save()
+  
+  log.debug('{} - {} - updated token prices', [
+    executionId,
+    Date.now(),
+  ])
 
   // update ETH price now that reserves could have changed
   let bundle = Bundle.load('1')
   bundle.ethPrice = getEthPriceInUSD()
   bundle.save()
+  
+  log.debug('{} - {} - grabbed ETH price in USD', [
+    executionId,
+    Date.now(),
+  ])
 
   token0.derivedETH = findEthPerToken(token0 as Token)
   token1.derivedETH = findEthPerToken(token1 as Token)
   token0.save()
   token1.save()
+  
+  log.debug('{} - {} - calculated token prices relative to ETH', [
+    executionId,
+    Date.now(),
+  ])
 
   // get tracked liquidity - will be 0 if neither is in whitelist
   let trackedLiquidityETH: BigDecimal
@@ -250,6 +286,11 @@ export function handleSync(event: Sync): void {
   } else {
     trackedLiquidityETH = ZERO_BD
   }
+  
+  log.debug('{} - {} - calculated pair liquidity', [
+    executionId,
+    Date.now(),
+  ])
 
   // use derived amounts within pair
   pair.trackedReserveETH = trackedLiquidityETH
@@ -265,12 +306,22 @@ export function handleSync(event: Sync): void {
   // now correctly set liquidity amounts for each token
   token0.totalLiquidity = token0.totalLiquidity.plus(pair.reserve0)
   token1.totalLiquidity = token1.totalLiquidity.plus(pair.reserve1)
+  
+  log.debug('{} - {} - updated liquidity values', [
+    executionId,
+    Date.now(),
+  ])
 
   // save entities
   pair.save()
   uniswap.save()
   token0.save()
   token1.save()
+  
+  log.debug('{} - {} - persisted liquidity values', [
+    executionId,
+    Date.now(),
+  ])
 }
 
 export function handleMint(event: Mint): void {
